@@ -55,7 +55,7 @@ class Smoother:
         
     def _init_coefs(self, dims, col_size, seed_targets, learn_seed):
         self.coefs = {
-            'flow': pt.full((dims, col_size), seed_targets),
+            'flow': pt.empty(dims, col_size).fill_(seed_targets),
         }
         if learn_seed: self.coefs['seed'] = self._seed
             
