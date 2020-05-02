@@ -322,7 +322,7 @@ class Smoother:
         """
         
         for coef in self.coefs.values(): coef.requires_grad = True
-        flow = self._init_flow(self.coefs['flow'], self.horizon, self.flow_clamp)
+        flow = self._init_flow(self.coefs['flow'], self.horizon, self._flow_clamp)
 
         actuals = [self.coefs['seed'] if self.learn_seed else self._seed]
         state = [self.coefs['seed'] if self.learn_seed else self._seed]
