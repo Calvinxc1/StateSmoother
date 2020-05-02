@@ -558,7 +558,7 @@ class Smoother:
                 learn_step = self._grad[key] / self._grad_sq[key].sqrt().clamp(min=self._learn_clamp)
                 self.coefs[key] = self.coefs[key] - (learn_step * learn_rate)
                 
-    def plot_fit(self, col, dim=0, figsize=(14,10)):
+    def plot_fit(self, col, dim=0, figsize=(14,10), ax=None):
         """ Plots the smoothed state fit
         
         Plots the actual state data against the smoothed data. Good for fit diagnostics.
@@ -581,9 +581,12 @@ class Smoother:
         None
         """
         
+        if ax is None:
+            fig = plt.figure(figsize=figsize)
+            fig.add_axes(plt.axes())
+            ax = fig.axes[0]
+            
         idx = self.columns.get_loc(col)
-        plt.figure(figsize=figsize)
-        sns.lineplot(x=self.index, y=self.actuals[:,idx,dim].detach().cpu().numpy())
-        sns.lineplot(x=self.index, y=self.state[:,idx,dim].detach().cpu().numpy())
-        plt.xlim(self.index[0], self.index[-1])
-        plt.tight_layout()
+        sns.lineplot(x=self.index, y=self.actuals[:,idx,dim].detach().cpu().numpy(), ax=ax)
+        sns.lineplot(x=self.index, y=self.state[:,idx,dim].detach().cpu().numpy(), ax=ax)
+        ax.set_xlim(self.index[0], self.index[-1])
