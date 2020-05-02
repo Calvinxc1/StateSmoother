@@ -379,7 +379,7 @@ class Smoother:
         None
         """
         
-        flow = pt.sigmoid(target.clamp(-clamp, clamp))**(1/horizon)
+        flow = pt.sigmoid(target.clamp(-clamp, clamp))**(1/(horizon**2))
         return flow
                 
     @staticmethod
