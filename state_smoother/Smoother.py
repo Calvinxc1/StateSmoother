@@ -555,7 +555,7 @@ class Smoother:
             for key, gradient in gradients.items():
                 self._grad[key] = (self._alpha * gradient) + ((1-self._alpha) * self._grad.get(key, gradient))
                 self._grad_sq[key] = (self._beta * (gradient**2)) + ((1-self._beta) * self._grad_sq.get(key, gradient**2))
-                learn_step = self._grad[key] / self._grad_sq[key].sqrt().clamp(self._clamp, np.inf)
+                learn_step = self._grad[key] / self._grad_sq[key].sqrt().clamp(self._learn_clamp, np.inf)
                 self.coefs[key] = self.coefs[key] - (learn_step * learn_rate)
                 
     def plot_fit(self, col, dim=0, figsize=(14,10)):
