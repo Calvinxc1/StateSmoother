@@ -69,7 +69,8 @@ class Smoother:
     
     def __init__(self, data_frame, dims, horizon, error_func=log_perc_error,
                  seed_data=None, coef_targets=0, learn_seed=False,
-                 alpha=0.2, beta=0.1, learn_clamp=1e-16, flow_clamp=32, verbose=False,
+                 alpha=0.2, beta=0.1, learn_clamp=1e-16, flow_clamp=32,
+                 verbose=False, tqdm_leave=True,
                 ):
         """ Initializer for Smoother class
         
@@ -107,6 +108,9 @@ class Smoother:
         verbose: bool (optional, default: False)
             Set to True to allow for verbose expression of class functions, including
             TQDM progress bars.
+        tqdm_leave: bool (optional, default: True)
+            Set to True to have the TQDM progress bar stay when complete. Only relevant
+            if verbose is also set to True.
         """
         
         self.dims = dims
@@ -114,6 +118,7 @@ class Smoother:
         self.error_func = error_func
         self.learn_seed = learn_seed
         self.verbose = verbose
+        self.tqdm_leave = tqdm_leave
         self.loss_rcd = []
         
         self._alpha = alpha
@@ -285,7 +290,7 @@ class Smoother:
             Shape: Observations, Columns, Dims
         """
         
-        t = trange(epocs) if self.verbose else range(epocs)
+        t = trange(epocs, leave=self.tqdm_leave) if self.verbose else range(epocs)
         for epoc in t:
             self.actuals, self.state = self._epoc(learn_rate, t)
         
