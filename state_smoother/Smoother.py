@@ -186,7 +186,7 @@ class Smoother:
             for d in range(1, dims): self._seed.append(pt.zeros(self.columns.size))
             self._seed = pt.stack(self._seed, dim=0)
         else:
-            self._seed = pt.from_numpy(seed_data[self.columns]).type(pt.Tensor)
+            self._seed = pt.from_numpy(seed_data[self.columns].values).type(pt.Tensor)
             
     def _init_incrementor(self, dims):
         """ Constructs the incrementor
