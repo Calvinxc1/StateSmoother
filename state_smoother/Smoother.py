@@ -51,8 +51,6 @@ class Smoother:
     data: PyTorch Tensor
         A Tensor copy of the original data_frame.
         Shape: Observations, Columns
-    enforce_zero:
-        Set to True enforces the first derivative dimension to never go below a zero value.
     flow_clamp: float
         Constrains the flow coefficient as to not cause inf/nan values in the sigmoid.
     grad: dict
@@ -72,7 +70,7 @@ class Smoother:
     def __init__(self, data_frame, dims, horizon, error_func=log_perc_error,
                  seed_data=None, coef_targets=0, learn_seed=False,
                  alpha=0.2, beta=0.1, learn_clamp=1e-16, flow_clamp=32,
-                 enforce_zero=False, verbose=False, tqdm_leave=True,
+                 verbose=False, tqdm_leave=True,
                 ):
         """ Initializer for Smoother class
         
@@ -107,8 +105,6 @@ class Smoother:
             Minimum value for learn step denominator, prevents div0 errors.
         flow_clamp: float (optional, default: 32, restriction: > 0)
             Constrains the flow coefficient as to not cause inf/nan values in the sigmoid.
-        enforce_zero: bool (optional, default False)
-            Set to True enforces the first derivative dimension to never go below a zero value.
         verbose: bool (optional, default: False)
             Set to True to allow for verbose expression of class functions, including
             TQDM progress bars.
@@ -121,7 +117,6 @@ class Smoother:
         self.horizon = horizon
         self.error_func = error_func
         self.learn_seed = learn_seed
-        self._enforce_zero = enforce_zero
         self.verbose = verbose
         self.tqdm_leave = tqdm_leave
         self.loss_rcd = []
@@ -334,7 +329,7 @@ class Smoother:
         error = []
         for actual in self._data:
             new_actual = self._form_actual(actual, self.dims, actuals[-1])
-            new_state, new_error = self._smooth_data(new_actual, self._incrementor, state[-1], flow, self.error_func, self._enforce_zero)
+            new_state, new_error = self._smooth_data(new_actual, self._incrementor, state[-1], flow, self.error_func)
             actuals.append(new_actual)
             state.append(new_state)
             error.append(new_error)
@@ -423,7 +418,7 @@ class Smoother:
         return dimmed_actual
     
     @staticmethod
-    def _smooth_data(actual, incrementor, prior_state, flow, error_func, enforce_zero):
+    def _smooth_data(actual, incrementor, prior_state, flow, error_func):
         """ Performs smoothing overation
         
         Performs a prediction from the prior state, which is used in calculating both
@@ -446,8 +441,6 @@ class Smoother:
         error_func: function
             The function to use to calculate the observation-level error. Must be
             PyTorch Tensor compatible.
-        enforce_zero: bool
-            Set to True enforces the first derivative dimension to never go below a zero value.
             
         Returns
         -------
@@ -466,7 +459,6 @@ class Smoother:
         
         predict = incrementor @ prior_state
         new_state = ((1-flow) * actual) + (flow * predict)
-        if enforce_zero: new_state[0,:] = new_state[0,:].clamp(min=0)
         new_error = error_func(predict[0,:], actual[0,:])
         return new_state, new_error
     
