@@ -5,7 +5,7 @@ import seaborn as sns
 from tqdm.notebook import trange
 import torch as pt
 
-from .errors import log_perc_error
+from .errors import sq_err
 
 class Smoother:
     """ Core state smoother class
@@ -67,7 +67,7 @@ class Smoother:
         Shape: Columns
     """
     
-    def __init__(self, data_frame, dims, horizon, error_func=log_perc_error,
+    def __init__(self, data_frame, dims, horizon, error_func=sq_err,
                  seed_data=None, coef_targets=0, learn_seed=False,
                  alpha=0.2, beta=0.1, learn_clamp=1e-16, flow_clamp=32,
                  verbose=False, tqdm_leave=True,
@@ -85,7 +85,7 @@ class Smoother:
         horizon: float (restriction: > 0)
             How many of observations to smooth out by. Larger numbers mean a weaker
             fit, but a smoother result. Can be decimal valued.
-        error_func: function (optional, default: log_perc_error)
+        error_func: function (optional, default: sq_err)
             The function to use to calculate the observation-level error. Must be
             PyTorch Tensor compatible.
         seed_data: Pandas DataFrame (optional, default: takes from first row of data_frame)
