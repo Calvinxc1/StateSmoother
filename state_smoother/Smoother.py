@@ -466,7 +466,7 @@ class Smoother:
         
         predict = incrementor @ prior_state
         new_state = ((1-flow) * actual) + (flow * predict)
-        if enforce_zero: new_state[0,:] = new_state[0,:].clamp(0, np.inf)
+        if enforce_zero: new_state[0,:] = new_state[0,:].clamp(min=0)
         new_error = error_func(predict[0,:], actual[0,:])
         return new_state, new_error
     
@@ -563,7 +563,7 @@ class Smoother:
             for key, gradient in gradients.items():
                 self._grad[key] = (self._alpha * gradient) + ((1-self._alpha) * self._grad.get(key, gradient))
                 self._grad_sq[key] = (self._beta * (gradient**2)) + ((1-self._beta) * self._grad_sq.get(key, gradient**2))
-                learn_step = self._grad[key] / self._grad_sq[key].sqrt().clamp(self._learn_clamp, np.inf)
+                learn_step = self._grad[key] / self._grad_sq[key].sqrt().clamp(min=self._learn_clamp)
                 self.coefs[key] = self.coefs[key] - (learn_step * learn_rate)
                 
     def plot_fit(self, col, dim=0, figsize=(14,10)):
