@@ -346,7 +346,7 @@ class Smoother:
         return actuals, state
     
     @staticmethod
-    def _init_flow(self, target, horizon, clamp):
+    def _init_flow(target, horizon, clamp):
         """ Initializes the flow smoothing values
         
         Flow dictates how much of the new state information overwrites the predicted state information.
