@@ -1,27 +1,53 @@
 # State Smoother
-The State Smoother came out of my frustration with time series smoothing techniques. I've always been very displeased with moving averages, and though exponential smoothing techniques are fantastic, I found the parameters really more of a scattershot than anything. I wanted something with parameters I could have not only finer control over, but had parameters that actually made sense! So after a few years of wrestling with the problem I landed on a rather nice solution, which is this package.
 
-I use this package heavily in my work on New Eden Analytics (of which several of my repos are dedicated to), where I smooth market history data to get a cleaner signal on how prices are moving in the game [EVE Online](https://www.eveonline.com/), which I have been playing for over 15 years. I've also used earlier versions of this package professionally, when dealing with time series data.
+## Overview
+
+StateSmoother is a PyTorch-based exponential smoothing / state estimation module for time-series data.
+It originated as a core component of [New Eden Analytics](https://github.com/New-Eden-Analytics) but has been used standalone in other forecasting
+and anomaly-detection workflows.
+
+## Status
+Stable prototype. API is mostly stable; test coverage and docs are limited.
+Maintained primarily for my own use and as part of [New Eden Analytics](https://github.com/New-Eden-Analytics).
+
+
+## About
+
+State Smoother was built to improve on common time-series smoothing workflows by
+using parameters that are both expressive and easier to reason about than
+traditional moving-average style approaches.
+
+The package is used extensively in New Eden Analytics projects to smooth EVE
+Online market history data and recover cleaner price signals.
 
 ## Installation
-Working on a pypi version of this, but for now just running `pip install .` from the root of a cloned copy of the reop will do the trick.
 
-## Code Example
-The package is very simple to use, and can be seen in the [demonstration notebook](./demonstration.ipynb).
+A published PyPI package is planned. For now, install from source:
 
-## Roadmap
-Located [here](./Roadmap.md).
+```bash
+pip install .
+```
 
+## Usage
 
-## Version History
-Found [here](./VersionHistory.md).
+A practical walkthrough is available in the notebook:
+
+- [demonstration.ipynb](./demonstration.ipynb)
+
+## Project Docs
+
+- Roadmap: [Roadmap.md](./Roadmap.md)
+- Version history: [VersionHistory.md](./VersionHistory.md)
 
 ## Contributing
-Like with all my projects, I'm always happy to have contributions. I'm pretty relaxed about it, but be aware that I do follow [Vincent Driessen's Git Branching Model](https://nvie.com/posts/a-successful-git-branching-model/), and am very fond of [Semantic Commit Messages](https://seesparkbox.com/foundry/semantic_commit_messages). So keep that in mind when you're working on a contribution.
 
-One note: I don't care much for linters, I find they organize code in ways I can't easily read. Please don't pass any code you add through a linter unless you are just horrible at writing clean code. And if you are, may I recommend [this book](https://www.amazon.com/gp/product/0132350882/)?
+Contributions are welcome.
+
+This project follows:
+
+- [Vincent Driessen's Git Branching Model](https://nvie.com/posts/a-successful-git-branching-model/)
+- [Semantic Commit Messages](https://seesparkbox.com/foundry/semantic_commit_messages)
 
 ## License
-This project uses the [GNU General Public License](./LICENSE).
 
-Short version: Have fun and use it for whatever, just make sure to attribute me for it (-:
+This project is licensed under the [GNU General Public License](./LICENSE).
