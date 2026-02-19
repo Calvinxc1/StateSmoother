@@ -487,11 +487,13 @@ class Smoother:
         None
         """
         
-        gradients = np.array([(key, coef) for key, coef in coefs.items()])
-        gradients[:,1] = pt.autograd.grad(loss, gradients[:,1])
-        gradients = {key:grad for key, grad in gradients}
-        for key in gradients.keys():
-            gradients[key][pt.isnan(gradients[key])] = 0
+        keys = list(coefs.keys())
+        coef_values = [coefs[key] for key in keys]
+        grad_values = pt.autograd.grad(loss, coef_values)
+
+        gradients = {}
+        for key, gradient in zip(keys, grad_values):
+            gradients[key] = pt.nan_to_num(gradient, nan=0.0)
         return gradients
     
     def _update_loss_rcd(self, loss, t):
