@@ -40,7 +40,8 @@ These instructions apply to the entire repo tree.
 - Tests live under `tests/`.
 - The demonstration notebook is [`demonstration.ipynb`](./demonstration.ipynb).
 - `uv.lock` is developer-local and should not be tracked in git for this repository.
-- There is no documented CI/CD or package publishing workflow in this repository at this time. Do not claim one exists unless it is added.
+- A pytest GitHub Actions workflow exists at [`.github/workflows/pytest.yaml`](./.github/workflows/pytest.yaml).
+- There is no documented package publishing workflow in this repository at this time. Do not claim one exists unless it is added.
 
 ## 3) Documentation and README Alignment
 
