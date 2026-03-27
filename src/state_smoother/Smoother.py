@@ -1,5 +1,11 @@
+from __future__ import annotations
+
+from typing import Any, Callable
+
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+from pandas import DataFrame, Index, Series
 from scipy.special import factorial as fact
 import seaborn as sns
 from tqdm.notebook import trange
@@ -7,112 +13,53 @@ import torch as pt
 
 from .errors import sq_err
 
+
 class Smoother:
-    """ Core state smoother class
-    
-    Attributes
-    ----------
-    actuals: PyTorch Tensor
-        A post-processed copy of data_frame, includes derivative dimensions
-        Shape: Observations, Columns, Dims
-    coefs: dict
-        Contains learned coefficients for smoothing, values in pt.Tensor form.
-    columns: Pandas Index
-        Copy of original data_frame columns.
-    dims: int
-        Number of derivative dimensions to smooth by. More will get a better
-        smoothing fit, but will make the fit more subject to data variance.
-    error_func: function
-        The function to use to calculate the observation-level error. Must be
-        PyTorch Tensor compatible.
-    horizon: float
-        How many of observations to smooth out by. Larger numbers mean a weaker
-        fit, but a smoother result. Can be decimal valued.
-    index: Pandas Index
-        Copy of original data_frame index.
-    learn_seed: bool
-        Set to True to enable updating of the seed data. Not recommend, as it
-        adds significant learning tine, and makes learning unstable.
-    loss_rcd: list
-        Record of loss values at each iteration.
-    state: PyTorch Tensor
-        A copy of the final smoothed data.
-        Shape: Observations, Columns, Dims
-    verbose: bool
-        Set to True to allow for verbose expression of class functions, including
-        TQDM progress bars.
-        
-    Hidden Attributes
-    -----------------
-    alpha: float
-        Gradient update smoothing factor. Higher values updates gradient more per epoc.
-    beta: float
-        Gradient^2 update smoothing factor. Higher values updates gradient^2 more per epoc.
-    data: PyTorch Tensor
-        A Tensor copy of the original data_frame.
-        Shape: Observations, Columns
-    flow_clamp: float
-        Constrains the flow coefficient as to not cause inf/nan values in the sigmoid.
-    grad: dict
-        Contains current smoothed gradient in pt.Tensor form. Keys match self.coefs.
-    grad_sq: dict
-        Contains current smoothed gradient^2 in pt.Tensor form. Keys match self.coefs.
-    incrementor: PyTorch Tensor
-        Tensor for predicting one time step from any state.
-        Shape: Dims, Dims
-    learn_clamp: float
-        Minimum value for learn step denominator, prevents div0 errors.
-    seed: PyTorch Tensor
-        A Tensor copy of the seed data.
-        Shape: Columns
+    """Fit smoothed state trajectories for tabular time-series data.
+
+    These instance attributes are established during ``__init__``.
     """
-    
-    def __init__(self, data_frame, dims, horizon, error_func=sq_err,
-                 seed_data=None, coef_targets=0, learn_seed=False,
-                 alpha=0.2, beta=0.1, learn_clamp=1e-16, flow_clamp=32,
-                 verbose=False, tqdm_leave=True,
-                ):
-        """ Initializer for Smoother class
-        
-        Parameters
-        ----------
-        data_frame: Pandas DataFrame
-            Contains the data to be smoothed.
-            Shape: Observations, Columns
-        dims: int (restriction: >= 1)
-            Number of derivative dimensions to smooth by. More will get a better
-            smoothing fit, but will make the fit more subject to data variance.
-        horizon: float (restriction: > 0)
-            How many of observations to smooth out by. Larger numbers mean a weaker
-            fit, but a smoother result. Can be decimal valued.
-        error_func: function (optional, default: sq_err)
-            The function to use to calculate the observation-level error. Must be
-            PyTorch Tensor compatible.
-        seed_data: Pandas DataFrame (optional, default: takes from first row of data_frame)
-            Initial values to seed the smoothing algorithm with. If not provided will take
-            from the first row of data_frame, and fill derivative dimensions with 0's.
-            Shape: Dims, Columns
-        coef_targets: float (optional, default: 0)
-            Seed value for the learned part of the flow coefficent.
-        learn_seed: bool (optional, default: False)
-            Set to True to enable updating of the seed data. Not recommend, as it
-            adds significant learning tine, and makes learning unstable.
-        alpha: float (optional, default: 0.2, restriction: > 0, < 1)
-            Gradient update smoothing factor. Higher values updates gradient more per epoc.
-        beta: float (optional, default: 0.1, restriction: > 0, < 1)
-            Gradient^2 update smoothing factor.Higher values updates gradient^2 more per epoc.
-        learn_clamp: float (optional, default: 1e-16, restriction: > 0)
-            Minimum value for learn step denominator, prevents div0 errors.
-        flow_clamp: float (optional, default: 32, restriction: > 0)
-            Constrains the flow coefficient as to not cause inf/nan values in the sigmoid.
-        verbose: bool (optional, default: False)
-            Set to True to allow for verbose expression of class functions, including
-            TQDM progress bars.
-        tqdm_leave: bool (optional, default: True)
-            Set to True to have the TQDM progress bar stay when complete. Only relevant
-            if verbose is also set to True.
-        """
-        
+
+    dims: int
+    horizon: float
+    error_func: Callable[[pt.Tensor, pt.Tensor], pt.Tensor]
+    learn_seed: bool
+    verbose: bool
+    tqdm_leave: bool
+    loss_rcd: list[np.ndarray]
+    actuals: pt.Tensor | None
+    state: pt.Tensor | None
+    columns: Index
+    index: Index
+    coefs: dict[str, pt.Tensor]
+    _alpha: float
+    _beta: float
+    _flow_clamp: float
+    _learn_clamp: float
+    _grad: dict[str, pt.Tensor]
+    _grad_sq: dict[str, pt.Tensor]
+    _data: pt.Tensor
+    _seed: pt.Tensor
+    _incrementor: pt.Tensor
+
+    def __init__(
+        self,
+        data_frame: DataFrame,
+        dims: int,
+        horizon: float,
+        error_func: Callable[[pt.Tensor, pt.Tensor], pt.Tensor] = sq_err,
+        seed_data: DataFrame | Series | None = None,
+        coef_targets: float = 0,
+        learn_seed: bool = False,
+        alpha: float = 0.2,
+        beta: float = 0.1,
+        learn_clamp: float = 1e-16,
+        flow_clamp: float = 32,
+        verbose: bool = False,
+        tqdm_leave: bool = True,
+    ) -> None:
+        """Initialize the smoother and seed internal tensors."""
+
         self.dims = dims
         self.horizon = horizon
         self.error_func = error_func
@@ -120,6 +67,8 @@ class Smoother:
         self.verbose = verbose
         self.tqdm_leave = tqdm_leave
         self.loss_rcd = []
+        self.actuals = None
+        self.state = None
         
         self._alpha = alpha
         self._beta = beta
@@ -131,51 +80,15 @@ class Smoother:
         self._init_frame(data_frame, seed_data, self.dims)
         self._init_incrementor(self.dims)
         self._init_coefs(self.dims, self.columns.size, coef_targets, learn_seed)
-        
-    def _init_frame(self, data_frame, seed_data, dims):
-        """ Initializes the provided data
-        
-        Will take the provided data_frame and convert it to a PyTorch Tensor.
-        
-        Will do the same with seed_data, however if no seed_data is available,
-        the first row of data_frame will be removed from data_frame and be used
-        as seed_data, with zero-fills for the derivative dimensions. If seed_data
-        is provided but with only one dimension of data, missing dimensions
-        will be zero-filled.
-        
-        All values are directly assigned as class attributes.
-        
-        Parameters
-        ----------
-        data_frame: Pandas DataFrame
-            Contains the data to be smoothed.
-            Shape: Observations, Columns
-        seed_data: Pandas DataFrame
-            Initial values to seed the smoothing algorithm with. If not provided will take
-            from the first row of data_frame, and fill derivative dimensions with 0's.
-            Shape: Dims, Columns
-        dims: int (restriction: >= 1)
-            Number of derivative dimensions to smooth by. More will get a better
-            smoothing fit, but will make the fit more subject to data variance.
-            
-        Returns
-        -------
-        None
-        
-        Attribute Assignments
-        ---------------------
-        columns: Pandas Index
-            Copy of original data_frame columns.
-        data: PyTorch Tensor
-            A Tensor copy of the original data_frame.
-            Shape: Observations, Columns
-        index: Pandas Index
-            Copy of original data_frame index.
-        seed: PyTorch Tensor
-            A Tensor copy of the seed data.
-            Shape: Columns
-        """
-        
+
+    def _init_frame(
+        self,
+        data_frame: DataFrame,
+        seed_data: DataFrame | Series | None,
+        dims: int,
+    ) -> None:
+        """Convert the input frame and seed data into tensors."""
+
         if seed_data is None:
             if self.verbose: print('No seed data provided, using first row of data_frame.')
             seed_data = data_frame.iloc[0,:]
@@ -192,135 +105,39 @@ class Smoother:
             self._seed = pt.stack(self._seed, dim=0)
         else:
             self._seed = pt.from_numpy(seed_data[self.columns].values).type(pt.Tensor)
-            
-    def _init_incrementor(self, dims):
-        """ Constructs the incrementor
-        
-        The incrementor is used to predict off of the current state. The current
-        state can be matrix multiplied against the incrementor to increment
-        by one time step. Multiple applications of the incrementor can be made to
-        increment additional days.
-        
-        Parameters
-        ----------
-        dims: int (restriction: >= 1)
-            Number of derivative dimensions to smooth by. More will get a better
-            smoothing fit, but will make the fit more subject to data variance.
-            
-        Returns
-        -------
-        None
-        
-        Attribute Assignments
-        ---------------------
-        incrementor: PyTorch Tensor
-            Tensor for predicting one time step from any state.
-            Shape: Dims, Dims
-        """
-        
+
+    def _init_incrementor(self, dims: int) -> None:
+        """Build the state transition incrementor."""
+
         self._incrementor = pt.from_numpy(np.stack([
             np.pad(1 / fact(np.arange(dims-dim)), (dim,0), 'constant', constant_values=0)
             for dim in range(dims)
         ])).type(pt.Tensor)
-        
-    def _init_coefs(self, dims, col_size, coef_targets, learn_seed):
-        """ Initializes the learning coefficents
-        
-        Flow is the learned component of the flow value, which determines how much
-        a current observation influences the smoothing.
-        
-        Seed is only present if learn_seed is True, it is the seed values that the
-        smoothing process is started from.
-        
-        Parameters
-        ----------
-        dims: int (restriction: >= 1)
-            Number of derivative dimensions to smooth by. More will get a better
-            smoothing fit, but will make the fit more subject to data variance.
-        col_size: int (restriction: >= 1)
-            Number of columns in the data.
-        coef_targets: float (optional, default: 0)
-            Seed value for the learned part of the flow coefficent.
-        learn_seed: bool (optional, default: False)
-            Set to True to enable updating of the seed data. Not recommend, as it
-            adds significant learning tine, and makes learning unstable.
-            
-        Returns
-        -------
-        None
-        
-        Attribute Assignments
-        ---------------------
-        coefs: dict
-            Contains learned coefficients for smoothing, values in pt.Tensor form.
-        """
-        
+
+    def _init_coefs(
+        self,
+        dims: int,
+        col_size: int,
+        coef_targets: float,
+        learn_seed: bool,
+    ) -> None:
+        """Initialize trainable coefficient tensors."""
+
         self.coefs = {
             'flow': pt.empty(dims, col_size).fill_(coef_targets),
         }
         if learn_seed: self.coefs['seed'] = self._seed
-            
-    def learn(self, epocs, learn_rate=1e-3):
-        """ Starts the learning process
-        
-        This method is the master controller for training the model, performing
-        the multiple iterations that optimize the coefficients.
-        
-        Parameters
-        ----------
-        epocs: int (restriction: >= 1)
-            Number of epocs to learn from.
-        learn_rate: float (optional, default: 1e-3, restriction: > 0)
-            Multiplier on the final learning steps made for gradient update.
-            Smaller values mean slower, but more reliable learning. Larger
-            values mean faster, but more unstable learning. It is *strongly*
-            recommended to never go over 1e-1 with this.
-        
-        Returns
-        -------
-        None
-        
-        Attribute Assignments
-        ---------------------
-        actuals: PyTorch Tensor
-            A post-processed copy of data_frame, includes derivative dimensions
-            Shape: Observations, Columns, Dims
-        state: PyTorch Tensor
-            A copy of the final smoothed data.
-            Shape: Observations, Columns, Dims
-        """
-        
+
+    def learn(self, epocs: int, learn_rate: float = 1e-3) -> None:
+        """Run gradient-based fitting for the configured number of epochs."""
+
         t = trange(epocs, leave=self.tqdm_leave) if self.verbose else range(epocs)
-        for epoc in t:
+        for _epoc in t:
             self.actuals, self.state = self._epoc(learn_rate, t)
-        
-    def _epoc(self, learn_rate, t):
-        """ Runs a single epoc of training
-        
-        Parameters
-        ----------
-        learn_rate: float (restriction: > 0)
-            Multiplier on the final learning steps made for gradient update.
-            Smaller values mean slower, but more reliable learning. Larger
-            values mean faster, but more unstable learning. It is *strongly*
-            recommended to never go over 1e-1 with this.
-        t: TQDM iterator
-            Used for updating the postfix of the TQDM iterator if verbose is True.
-            
-        Returns
-        -------
-        actuals: PyTorch Tensor
-            A post-processed copy of data_frame, includes derivative dimensions
-            Shape: Observations, Columns, Dims
-        state: PyTorch Tensor
-            A copy of the final smoothed data.
-            Shape: Observations, Columns, Dims
-        
-        Attribute Assignments
-        ---------------------
-        None
-        """
-        
+
+    def _epoc(self, learn_rate: float, t: Any) -> tuple[pt.Tensor, pt.Tensor]:
+        """Run one optimization epoch and return actual/state tensors."""
+
         for coef in self.coefs.values(): coef.requires_grad = True
         flow = self._init_flow(self.coefs['flow'], self.horizon, self._flow_clamp)
 
@@ -346,147 +163,40 @@ class Smoother:
         return actuals, state
     
     @staticmethod
-    def _init_flow(target, horizon, clamp):
-        """ Initializes the flow smoothing values
-        
-        Flow dictates how much of the new state information overwrites the predicted state information.
-        Flow's formula is organised around the idea that at each state update there is a % of
-        the actual states over a horizon window that will be present in the current observation.
-        
-        The 'proper' formula for flow is actually $F = 1 - (1 - T)^{1 / H}$, where T = target and H = horizon.
-        A simplified version is used here, with the one-minus's removed, as gradient descent doesn't
-        need to maintain logical integrity with the original meaning, and it computes faster.
-        
-        Parameters
-        ----------
-        target: PyTorch Tensor
-            Controls the % of flow over the horizon period
-            Shape = Dims, Columns
-        horizon: float
-            How many of observations to smooth out by. Larger numbers mean a weaker
-            fit, but a smoother result.
-        clamp: float (restriction: > 0)
-            Constrains the flow coefficient as to not cause inf/nan values in the sigmoid.
-            
-        Returns
-        -------
-        flow: PyTorch Tensor
-            Contains the flow values that will be used in smoothing.
-            Shape: Dims, Columns
-        
-        Attribute Assignments
-        ---------------------
-        None
-        """
-        
+    def _init_flow(target: pt.Tensor, horizon: float, clamp: float) -> pt.Tensor:
+        """Convert learned flow targets into bounded smoothing weights."""
+
         flow = pt.sigmoid(target.clamp(-clamp, clamp))**(1/(horizon**2))
         return flow
                 
     @staticmethod
-    def _form_actual(actual, dims, prior_actual):
-        """ Forms derivative dimensions for unsmoothed data
-        
-        Constructs additional derivatives based on differencing the prior derivative's
-        change between the current values and prior values.
-        
-        Parameters
-        ----------
-        actual: PyTorch Tensor
-            A row of unsmoothed data from the data class attribute
-            Shape: Columns
-        dims: int (restriction: >= 1)
-            Number of derivative dimensions to smooth by. More will get a better
-            smoothing fit, but will make the fit more subject to data variance.
-        prior_actual: PyTorch Tensor
-            A copy of the previous unsmoothed record, with derivative dimensions.
-            Shape: Dims, Columns
-            
-        Returns
-        -------
-        dimmed_actual: PyTorch Tensor
-            Unsmoothed data with derivative dimensions calculated.
-            Shape: Dims, Columns
-            
-        Attribute Assignments
-        ---------------------
-        None
-        """
-        
+    def _form_actual(actual: pt.Tensor, dims: int, prior_actual: pt.Tensor) -> pt.Tensor:
+        """Add derivative dimensions for the current observation."""
+
         dimmed_actual = [actual]
         for d in range(1, dims): dimmed_actual.append(dimmed_actual[-1] - prior_actual[d-1,:])
         dimmed_actual = pt.stack(dimmed_actual, dim=0)
         return dimmed_actual
     
     @staticmethod
-    def _smooth_data(actual, incrementor, prior_state, flow, error_func):
-        """ Performs smoothing overation
-        
-        Performs a prediction from the prior state, which is used in calculating both
-        the current smoothed values, and the learning error.
-        
-        Parameters
-        ----------
-        actual: PyTorch Tensor
-            Unsmoothed data with derivative dimensions.
-            Shape: Dims, Columns
-        incrementor: PyTorch Tensor
-            Tensor for predicting one time step from any state.
-            Shape: Dims, Dims
-        prior_state: PyTorch Tensor
-            Unsmoothed previous timestep data with derivative dimensions.
-            Shape: Dims, Columns
-        flow: PyTorch Tensor
-            Contains the flow values that will be used in smoothing.
-            Shape: Dims, Columns
-        error_func: function
-            The function to use to calculate the observation-level error. Must be
-            PyTorch Tensor compatible.
-            
-        Returns
-        -------
-        new_state: PyTorch Tensor
-            The current smoothed state
-            Shape: Dims, Columns
-        new_error: PyTorch Tensor
-            The prediction error between the incremented prior state and the actual
-            unsmoothed values.
-            Shape: Dims, Columns
-            
-        Attribute Assignments
-        ---------------------
-        None
-        """
-        
+    def _smooth_data(
+        actual: pt.Tensor,
+        incrementor: pt.Tensor,
+        prior_state: pt.Tensor,
+        flow: pt.Tensor,
+        error_func: Callable[[pt.Tensor, pt.Tensor], pt.Tensor],
+    ) -> tuple[pt.Tensor, pt.Tensor]:
+        """Predict the next state, blend it with the observation, and score error."""
+
         predict = incrementor @ prior_state
         new_state = ((1-flow) * actual) + (flow * predict)
         new_error = error_func(predict[0,:], actual[0,:])
         return new_state, new_error
     
     @staticmethod
-    def _calc_grad(loss, coefs):
-        """ Calculates gradient of loss with respect to coefs
-        
-        Parses through active coefficients, including them in PyTorch's AutoGrad
-        calculation, and reforms them in the original coefs dictionary form.
-        
-        Parameters
-        ----------
-        loss: PyTorch Tensor
-            Loss value to calculate gradient with
-            Shape: Scalar
-        coefs: dict
-            Contains learned coefficients for smoothing, values in pt.Tensor form.
-            
-        Returns
-        -------
-        gradients: dict
-            Contains the gradients of loss, with respect to coefs, within dict values.
-            
-        Attribute Assignments
-        ---------------------
-        None
-        """
-        
+    def _calc_grad(loss: pt.Tensor, coefs: dict[str, pt.Tensor]) -> dict[str, pt.Tensor]:
+        """Compute gradients for the active coefficient tensors."""
+
         keys = list(coefs.keys())
         coef_values = [coefs[key] for key in keys]
         grad_values = pt.autograd.grad(loss, coef_values)
@@ -496,65 +206,15 @@ class Smoother:
             gradients[key] = pt.nan_to_num(gradient, nan=0.0)
         return gradients
     
-    def _update_loss_rcd(self, loss, t):
-        """ Updates the loss record
-        
-        Will take the current loss value and convert it to a Numpy value, storing
-        it in the loss_rcd attribute.
-        
-        If verbose is True, will append the current value to the TQDM postfix.
-        
-        Paramaters
-        ----------
-        loss: PyTorch Tensor
-            Loss value to calculate gradient with
-            Shape: Scalar
-        t: TQDM iterator
-            Used for updating the postfix of the TQDM iterator if verbose is True.
-            
-        Returns
-        -------
-        None
-        
-        Attribute Assignments
-        ---------------------
-        loss_rcd: list (update)
-            Adds the current loss values to the loss_rcd list.
-        """
-        
+    def _update_loss_rcd(self, loss: pt.Tensor, t: Any) -> None:
+        """Append the current loss and update the progress display when enabled."""
+
         self.loss_rcd.append(loss.detach().cpu().numpy())
         if self.verbose: t.set_postfix({'loss': self.loss_rcd[-1]})
     
-    def _update_coefs(self, gradients, learn_rate):
-        """ Updates the coefficients
-        
-        Performis a modified form of ADAM gradient descent to update the
-        coefficients.
-        
-        Parameters
-        ----------
-        gradients: dict
-            Contains the gradients of loss, with respect to coefs, within dict values.
-        learn_rate: float (restriction: > 0)
-            Multiplier on the final learning steps made for gradient update.
-            Smaller values mean slower, but more reliable learning. Larger
-            values mean faster, but more unstable learning. It is *strongly*
-            recommended to never go over 1e-1 with this.
-            
-        Returns
-        -------
-        None
-        
-        Attribute Assignments
-        ---------------------
-        grad: dict (update)
-            Updates the gradient values based on the current and prior gradients
-        grad_sq: dict (update)
-            Updates the gradient^2 values based on the current and prior gradient^2's
-        coefs: dict (update)
-            Updates the coefficients based on their gradients.
-        """
-        
+    def _update_coefs(self, gradients: dict[str, pt.Tensor], learn_rate: float) -> None:
+        """Apply the smoothed gradient update to each trainable coefficient."""
+
         with pt.no_grad():
             for key, gradient in gradients.items():
                 self._grad[key] = (self._alpha * gradient) + ((1-self._alpha) * self._grad.get(key, gradient))
@@ -562,29 +222,15 @@ class Smoother:
                 learn_step = self._grad[key] / self._grad_sq[key].sqrt().clamp(min=self._learn_clamp)
                 self.coefs[key] = self.coefs[key] - (learn_step * learn_rate)
                 
-    def plot_fit(self, col, dim=0, figsize=(14,10), ax=None):
-        """ Plots the smoothed state fit
-        
-        Plots the actual state data against the smoothed data. Good for fit diagnostics.
-        
-        Parameters
-        ----------
-        col: varies
-            Column name for data to plot, from original data_frame.
-        dim: int (optional, default 0)
-            Dimension of data to plot.
-        fig_size: tuple (optional, default: (14,10))
-            Size of resulting plot
-            
-        Returns
-        -------
-        None, does render a plot to the view however
-        
-        Attribute Assignments
-        ---------------------
-        None
-        """
-        
+    def plot_fit(
+        self,
+        col: Any,
+        dim: int = 0,
+        figsize: tuple[int, int] = (14, 10),
+        ax: Any | None = None,
+    ) -> None:
+        """Plot the observed and smoothed series for one column/dimension."""
+
         if ax is None:
             fig = plt.figure(figsize=figsize)
             fig.add_axes(plt.axes())
